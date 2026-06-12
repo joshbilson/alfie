@@ -50,6 +50,10 @@ dependencies = [
     "loguru==0.7.3",
     "asgiref==3.11.1",
 
+    # Native web push (Alfie) — VAPID-signed browser Push API; replaces the ntfy PWA.
+    "pywebpush==2.3.0",
+    "py-vapid==1.9.4",
+
     "tiktoken==0.12.0",
     "mcp==1.26.0",
 

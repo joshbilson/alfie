@@ -125,6 +125,7 @@ from open_webui.utils.tools import (
     get_updated_tool_function,
 )
 from open_webui.utils.webhook import post_webhook
+from open_webui.utils.webpush import send_web_push
 from starlette.responses import JSONResponse, Response, StreamingResponse
 
 logging.basicConfig(stream=sys.stdout, level=GLOBAL_LOG_LEVEL)
@@ -3546,6 +3547,9 @@ async def non_streaming_chat_response_handler(response, ctx):
                                     'url': f'{request.app.state.config.WEBUI_URL}/c/{metadata["chat_id"]}',
                                 },
                             )
+                    # Alfie native web push (mirrors the webhook; inactivity-gated)
+                    if not await Users.is_user_active(user.id):
+                        await send_web_push(user, title, content, url=f'{request.app.state.config.WEBUI_URL}/c/{metadata["chat_id"]}', data={'chat_id': metadata['chat_id']})
 
                     ctx['assistant_message'] = {
                         'content': content,
@@ -5160,6 +5164,9 @@ async def streaming_chat_response_handler(response, ctx):
                                 'url': f'{request.app.state.config.WEBUI_URL}/c/{metadata["chat_id"]}',
                             },
                         )
+                # Alfie native web push (mirrors the webhook; inactivity-gated)
+                if not await Users.is_user_active(user.id):
+                    await send_web_push(user, title, content, url=f'{request.app.state.config.WEBUI_URL}/c/{metadata["chat_id"]}', data={'chat_id': metadata['chat_id']})
 
                 await event_emitter(
                     {
