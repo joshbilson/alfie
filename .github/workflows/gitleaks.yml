@@ -1,0 +1,40 @@
+# gitleaks secret-scan gate for the alfie open-webui fork (v4 Phase 1).
+# Adapted from the alfie stack repo's ci/gitleaks.yml. Loads .gitleaks.toml
+# from the repo root automatically (allowlists are regexTarget="secret",
+# never path-based). fetch-depth: 0 so the full PR history is scanned, not
+# just the merge commit.
+#
+# gitleaks/gitleaks-action is free for personal accounts; an org account
+# would need GITLEAKS_LICENSE (https://gitleaks.io) — set it as a repo secret
+# or swap to the raw CLI step commented out below.
+name: gitleaks
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+    tags:
+      - v*
+
+permissions:
+  contents: read
+
+jobs:
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}  # org accounts only
+
+      # License-free alternative (raw CLI):
+      # - name: gitleaks (CLI)
+      #   run: |
+      #     curl -sSfL https://github.com/gitleaks/gitleaks/releases/latest/download/gitleaks_$(uname -s)_x64.tar.gz \
+      #       | tar -xz gitleaks
+      #     ./gitleaks git --redact --no-banner --exit-code 1 .

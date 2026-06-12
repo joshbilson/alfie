@@ -1,0 +1,35 @@
+# Gitleaks config for the alfie open-webui fork (v4 Phase 1).
+# Mirrored from the alfie stack repo's .gitleaks.toml; run by
+# .github/workflows/gitleaks.yml (gitleaks auto-loads this from the repo root).
+#
+# Extends the default ruleset. Allowlists cover *references* to secrets —
+# 1Password op:// URIs, template/doc placeholders — never real values, and
+# they match on the captured secret (not paths or whole files), so a real
+# credential sitting next to an allowlisted reference is still flagged.
+
+title = "alfie open-webui fork"
+
+[extend]
+useDefault = true
+
+# 1Password secret references: op://<vault>/<item>/<field>. These are
+# pointers, not values — committing them is the whole point of .env.template
+# and the deploy scripts (`op inject` / `op read` resolve them at deploy
+# time). Also matches the `op read 'op://…'` command-substitution form.
+[[allowlists]]
+description = "1Password op:// secret references (pointers, not values)"
+regexTarget = "secret"
+regexes = [
+  '''op://[A-Za-z0-9._\- ]+/[A-Za-z0-9._\- ]+(/[A-Za-z0-9._\- ]+)?''',
+]
+
+# Obvious placeholder values in templates and docs. Tightly shaped — a real
+# key never looks like <angle-bracket-text> or CHANGE_ME.
+[[allowlists]]
+description = "template/doc placeholders (non-values)"
+regexTarget = "secret"
+regexes = [
+  '''(?i)^<[a-z0-9 ._/-]+>$''',
+  '''(?i)^(change[_-]?me|replace[_-]?me|placeholder|redacted|dummy|example[a-z0-9_-]*)$''',
+  '''(?i)^x{6,}$''',
+]
