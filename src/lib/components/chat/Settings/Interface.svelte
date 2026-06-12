@@ -6,6 +6,13 @@
 	import { updateUserInfo } from '$lib/apis/users';
 	import { getUserPosition } from '$lib/utils';
 	import { setTextScale } from '$lib/utils/text-scale';
+	import {
+		isPushSupported,
+		isIosUninstalledPwa,
+		getPushSubscriptionState,
+		subscribeUser,
+		unsubscribeUser
+	} from '$lib/utils/webpush';
 
 	import Minus from '$lib/components/icons/Minus.svelte';
 	import Plus from '$lib/components/icons/Plus.svelte';
@@ -40,6 +47,12 @@
 
 	let notificationSound = true;
 	let notificationSoundAlways = false;
+
+	// Native web push
+	let pushSupported = false;
+	let pushNeedsInstall = false;
+	let pushNotifications = false;
+	let pushBusy = false;
 
 	let highContrastMode = false;
 
@@ -136,6 +149,42 @@
 				auto: titleAutoGenerate
 			}
 		});
+	};
+
+	const togglePushNotifications = async () => {
+		if (pushBusy) {
+			return;
+		}
+		pushBusy = true;
+
+		// `pushNotifications` is already bound to the new state via the Switch.
+		const wantEnabled = pushNotifications;
+
+		try {
+			if (wantEnabled) {
+				// MUST run inside this user gesture so the permission prompt is allowed.
+				const subscription = await subscribeUser(localStorage.token);
+				if (subscription) {
+					pushNotifications = true;
+					toast.success($i18n.t('Push notifications enabled.'));
+				} else {
+					// Permission denied or dismissed.
+					pushNotifications = false;
+					toast.error(
+						$i18n.t('Notification permission was not granted. Please enable it in your browser.')
+					);
+				}
+			} else {
+				await unsubscribeUser();
+				pushNotifications = false;
+				toast.success($i18n.t('Push notifications disabled.'));
+			}
+		} catch (error) {
+			pushNotifications = await getPushSubscriptionState();
+			toast.error(`${error?.message ?? error}`);
+		} finally {
+			pushBusy = false;
+		}
 	};
 
 	const toggleResponseAutoCopy = async () => {
@@ -252,6 +301,12 @@
 
 		notificationSound = $settings?.notificationSound ?? true;
 		notificationSoundAlways = $settings?.notificationSoundAlways ?? false;
+
+		pushSupported = isPushSupported();
+		pushNeedsInstall = isIosUninstalledPwa();
+		if (pushSupported) {
+			pushNotifications = await getPushSubscriptionState();
+		}
 
 		iframeSandboxAllowSameOrigin = $settings?.iframeSandboxAllowSameOrigin ?? false;
 		iframeSandboxAllowForms = $settings?.iframeSandboxAllowForms ?? false;
@@ -492,6 +547,35 @@
 							/>
 						</div>
 					</div>
+				</div>
+			{/if}
+
+			{#if pushSupported}
+				<div>
+					<div class=" py-0.5 flex w-full justify-between">
+						<div id="push-notifications-label" class=" self-center text-xs">
+							{$i18n.t('Push Notifications')}
+						</div>
+
+						<div class="flex items-center gap-2 p-1">
+							<Switch
+								ariaLabelledbyId="push-notifications-label"
+								tooltip={true}
+								bind:state={pushNotifications}
+								on:change={() => {
+									togglePushNotifications();
+								}}
+							/>
+						</div>
+					</div>
+
+					{#if pushNeedsInstall}
+						<div class=" text-xs text-gray-500 pb-1">
+							{$i18n.t(
+								'On iPhone and iPad, add this app to your Home Screen to receive push notifications.'
+							)}
+						</div>
+					{/if}
 				</div>
 			{/if}
 
