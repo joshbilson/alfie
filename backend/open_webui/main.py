@@ -678,6 +678,10 @@ async def lifespan(app: FastAPI):
 
     asyncio.create_task(scheduler_worker_loop(app))
 
+    from open_webui.utils.ntfy_bridge import run_ntfy_bridge
+
+    app.state.ntfy_bridge_task = asyncio.create_task(run_ntfy_bridge(app))
+
     if app.state.config.ENABLE_BASE_MODELS_CACHE:
         try:
             await get_all_models(
@@ -745,6 +749,9 @@ async def lifespan(app: FastAPI):
 
     if hasattr(app.state, 'redis_task_command_listener'):
         app.state.redis_task_command_listener.cancel()
+
+    if hasattr(app.state, 'ntfy_bridge_task'):
+        app.state.ntfy_bridge_task.cancel()
 
 
 app = FastAPI(
