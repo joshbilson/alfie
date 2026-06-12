@@ -73,6 +73,7 @@
 	import { getUserSettings } from '$lib/apis/users';
 	import dayjs from 'dayjs';
 	import { getChannels } from '$lib/apis/channels';
+	import { resubscribeWebPush } from '$lib/utils/webpush';
 
 	const unregisterServiceWorkers = async () => {
 		if ('serviceWorker' in navigator) {
@@ -92,6 +93,8 @@
 	beforeNavigate(async ({ willUnload, to }) => {
 		if (updated.current && !willUnload && to?.url) {
 			await unregisterServiceWorkers();
+			// R13: the hard reload re-registers the SW (SvelteKit/adapter-static);
+			// re-subscribe push on the next load so updates don't silently kill it.
 			location.href = to.url.href;
 		}
 	});
@@ -1076,6 +1079,10 @@
 						if (timezone) {
 							updateUserTimezone(localStorage.token, timezone);
 						}
+
+						// R13: restore push after a service-worker re-register on app update
+						// (no-op unless this browser already has an active subscription).
+						resubscribeWebPush(localStorage.token);
 
 						// Relay auth token to desktop app for API access
 						if (window.electronAPI?.send) {
