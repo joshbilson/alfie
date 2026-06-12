@@ -52,6 +52,7 @@ from open_webui.utils.models import (
     get_filtered_models,
 )
 from open_webui.utils.webhook import post_webhook
+from open_webui.utils.webpush import send_web_push
 from pydantic import BaseModel, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -847,6 +848,8 @@ async def send_notification(request, channel, message, active_user_ids, db=None)
                             'url': f'{webui_url}/channels/{channel.id}',
                         },
                     )
+            # Alfie native web push (mirrors the channel webhook)
+            await send_web_push(u, f'#{channel.name}', message.content, url=f'{webui_url}/channels/{channel.id}', data={'channel_id': channel.id})
 
     return True
 
