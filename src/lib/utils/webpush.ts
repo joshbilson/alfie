@@ -19,6 +19,41 @@ import { WEBUI_API_BASE_URL } from '$lib/constants';
  *     as false until installed.
  */
 
+/**
+ * Persisted opt-in marker. The browser's PushSubscription is destroyed when the
+ * service worker is unregistered on an app update (see `+layout.svelte`'s
+ * `unregisterServiceWorkers()`), so the live subscription cannot be the source of
+ * truth for "did the user want push?". This localStorage flag survives the
+ * update/reload and lets `resubscribeWebPush()` re-create a fresh subscription
+ * without a user gesture, and lets the Settings toggle reflect the real intent.
+ */
+const PUSH_OPT_IN_KEY = 'alfie:push-opt-in';
+
+const setPushOptIn = (): void => {
+	try {
+		localStorage.setItem(PUSH_OPT_IN_KEY, '1');
+	} catch (e) {
+		// localStorage may be unavailable (private mode / disabled); push still
+		// works for this session, it just won't auto-restore after an update.
+	}
+};
+
+const clearPushOptIn = (): void => {
+	try {
+		localStorage.removeItem(PUSH_OPT_IN_KEY);
+	} catch (e) {
+		// ignore — see setPushOptIn.
+	}
+};
+
+const hasPushOptIn = (): boolean => {
+	try {
+		return localStorage.getItem(PUSH_OPT_IN_KEY) === '1';
+	} catch (e) {
+		return false;
+	}
+};
+
 export const isPushSupported = (): boolean => {
 	return (
 		typeof navigator !== 'undefined' &&
@@ -168,6 +203,10 @@ export const subscribeUser = async (token: string): Promise<PushSubscription | n
 
 	await subscribeToWebPush(token, subscription.toJSON());
 
+	// Persist the opt-in so push can be auto-restored after an app update wipes
+	// the live subscription (R13).
+	setPushOptIn();
+
 	return subscription;
 };
 
@@ -177,6 +216,11 @@ export const subscribeUser = async (token: string): Promise<PushSubscription | n
  * browser-side registration to stop delivery to this device.
  */
 export const unsubscribeUser = async (): Promise<boolean> => {
+	// Clear the opt-in first so a deliberate disable is never resurrected by
+	// `resubscribeWebPush()` on the next update, even if the unsubscribe below
+	// throws or there is no live subscription to drop.
+	clearPushOptIn();
+
 	if (!isPushSupported()) {
 		return false;
 	}
@@ -192,12 +236,23 @@ export const unsubscribeUser = async (): Promise<boolean> => {
 };
 
 /**
- * Whether this browser currently holds an active push subscription. Used to
- * reflect the toggle state on mount and after an app update.
+ * Whether push is "on" for this browser, for reflecting the toggle state on
+ * mount and after an app update.
+ *
+ * The opt-in marker is the source of truth: after an app update the live
+ * `PushSubscription` is destroyed and a fresh one is (re)created asynchronously
+ * by `resubscribeWebPush()`. Reading only `getSubscription()` would briefly show
+ * OFF during that window. So when permission is granted AND the user opted in,
+ * report ON regardless of whether the fresh subscription has materialised yet.
+ * Otherwise fall back to whether a live subscription exists.
  */
 export const getPushSubscriptionState = async (): Promise<boolean> => {
 	if (!isPushSupported() || Notification.permission !== 'granted') {
 		return false;
+	}
+
+	if (hasPushOptIn()) {
+		return true;
 	}
 
 	try {
@@ -210,32 +265,62 @@ export const getPushSubscriptionState = async (): Promise<boolean> => {
 };
 
 /**
- * Re-subscribe push after an app update / service-worker re-registration.
- * Only acts when the user previously granted permission AND already had a live
- * subscription, so it never prompts and never resurrects push the user disabled.
- * Safe to call unconditionally from the update path (R13).
+ * Re-subscribe push after an app update / service-worker re-registration (R13).
+ *
+ * The app-update path (`+layout.svelte`) unregisters the service worker, which
+ * DESTROYS the live `PushSubscription`. After the post-update reload there is
+ * therefore no subscription, so simply re-POSTing an existing one is not enough —
+ * push would be silently lost. We instead use the persisted opt-in marker as the
+ * source of truth:
+ *
+ *   - Marker absent  -> user never opted in (or deliberately disabled). Leave
+ *     push off; this is the only early-return.
+ *   - Marker present, live subscription exists -> re-POST it so the backend
+ *     record cannot drift out of sync.
+ *   - Marker present, no live subscription (the update case) -> RE-CREATE a fresh
+ *     subscription and POST it. No user gesture is needed because permission is
+ *     already 'granted'.
+ *
+ * Never prompts (it bails unless permission is already granted) and never
+ * resurrects push the user turned off (it bails unless the marker is set). Safe
+ * to call unconditionally from the update path.
  */
 export const resubscribeWebPush = async (token: string): Promise<void> => {
 	if (!isPushSupported() || Notification.permission !== 'granted') {
 		return;
 	}
 
+	// The opt-in marker is the source of truth. If it is absent the user is
+	// deliberately off — do nothing.
+	if (!hasPushOptIn()) {
+		return;
+	}
+
 	try {
 		const registration = await navigator.serviceWorker.ready;
 		const existing = await registration.pushManager.getSubscription();
-		if (!existing) {
-			// User had not opted in (or unsubscribed) — leave push off.
+
+		if (existing) {
+			// Subscription survived (e.g. a soft reload): re-POST it so the
+			// backend record cannot drift out of sync.
+			await subscribeToWebPush(token, existing.toJSON());
 			return;
 		}
 
+		// The update path unregistered the SW and destroyed the subscription.
+		// Re-create it fresh — permission is already granted, so no gesture is
+		// required.
 		const publicKey = await getVapidPublicKey(token);
 		if (!publicKey) {
 			return;
 		}
 
-		// The push endpoint survives SW re-registration, but re-POST the
-		// subscription so the backend record cannot drift out of sync.
-		await subscribeToWebPush(token, existing.toJSON());
+		const subscription = await registration.pushManager.subscribe({
+			userVisibleOnly: true,
+			applicationServerKey: urlBase64ToUint8Array(publicKey)
+		});
+
+		await subscribeToWebPush(token, subscription.toJSON());
 	} catch (e) {
 		console.error('Failed to re-subscribe web push after update:', e);
 	}
