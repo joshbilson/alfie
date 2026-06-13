@@ -33,6 +33,7 @@ from open_webui.socket.main import get_event_emitter
 from open_webui.tasks import stop_item_tasks
 from open_webui.utils.access_control import filter_allowed_access_grants, has_permission
 from open_webui.utils.auth import get_admin_user, get_verified_user
+from open_webui.utils.chat_fork import FORK_MODES, build_forked_history
 from open_webui.utils.middleware import serialize_output
 from open_webui.utils.misc import get_message_list
 from pydantic import BaseModel
@@ -1237,6 +1238,68 @@ async def clone_chat_by_id(
             )
     else:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=ERROR_MESSAGES.DEFAULT())
+
+
+############################
+# ForkChatFromMessage (Alfie B2: "Fork from here")
+############################
+
+
+class ForkForm(BaseModel):
+    message_id: str
+    mode: str | None = 'path'  # one of chat_fork.FORK_MODES
+    title: str | None = None
+
+
+@router.post('/{id}/fork', response_model=ChatResponse | None)
+async def fork_chat_by_id(
+    form_data: ForkForm,
+    id: str,
+    user=Depends(get_verified_user),
+    db: AsyncSession = Depends(get_async_session),
+):
+    """Fork a conversation from a message into a NEW chat owned by the caller.
+
+    A2 scoping: the source chat is looked up by id AND user.id, so a user can
+    only fork their own chat — any other id resolves to None → 404. The new
+    chat is created under the same user.id. No cross-user access.
+    """
+    # Scope strictly to the caller — no cross-user forking (A2).
+    chat = await Chats.get_chat_by_id_and_user_id(id, user.id, db=db)
+    if not chat:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=ERROR_MESSAGES.NOT_FOUND,
+        )
+
+    mode = form_data.mode if form_data.mode in FORK_MODES else 'path'
+    history = chat.chat.get('history', {})
+
+    forked_history = build_forked_history(history, form_data.message_id, mode)
+    if forked_history is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=ERROR_MESSAGES.NOT_FOUND,
+        )
+
+    # Reuse insert_new_chat (dual-writes the message rows). Carry only the
+    # forked subset; keep the source's models/params so the new chat opens
+    # with the same configuration.
+    new_chat = {
+        **chat.chat,
+        'history': forked_history,
+        'messages': get_message_list(forked_history['messages'], forked_history['currentId']),
+        'title': form_data.title or chat.title,
+        'forkedFromChatId': chat.id,
+        'forkedFromMessageId': form_data.message_id,
+    }
+
+    try:
+        result = await Chats.insert_new_chat(str(uuid4()), user.id, ChatForm(chat=new_chat), db=db)
+        return ChatResponse(**result.model_dump())
+    except Exception as e:
+        log.exception(e)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=ERROR_MESSAGES.DEFAULT())
 
 
 ############################

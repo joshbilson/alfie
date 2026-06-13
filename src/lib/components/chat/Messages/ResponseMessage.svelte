@@ -64,6 +64,7 @@
 	import StatusHistory from './ResponseMessage/StatusHistory.svelte';
 	import FullHeightIframe from '$lib/components/common/FullHeightIframe.svelte';
 	import OutputEditView from './OutputEditView.svelte';
+	import ForkButton from './ForkButton.svelte'; // Alfie B2: "Fork from here"
 
 	interface MessageType {
 		id: string;
@@ -1053,6 +1054,14 @@
 										</svg>
 									</button>
 								</Tooltip>
+
+								{#if !readOnly && !$temporaryChatEnabled && chatId}
+									<ForkButton
+										{chatId}
+										messageId={message.id}
+										visible={isLastMessage || ($settings?.highContrastMode ?? false)}
+									/>
+								{/if}
 
 								{#if !readOnly && ($user?.role === 'admin' || ($user?.permissions?.chat?.tts ?? true))}
 									<Tooltip content={$i18n.t('Read Aloud')} placement="bottom">

@@ -16,6 +16,7 @@
 	import Markdown from './Markdown.svelte';
 	import Image from '$lib/components/common/Image.svelte';
 	import DeleteConfirmDialog from '$lib/components/common/ConfirmDialog.svelte';
+	import ForkButton from './ForkButton.svelte'; // Alfie B2: "Fork from here"
 
 	import localizedFormat from 'dayjs/plugin/localizedFormat';
 
@@ -548,6 +549,14 @@
 								</svg>
 							</button>
 						</Tooltip>
+					{/if}
+
+					{#if !readOnly && chatId}
+						<ForkButton
+							{chatId}
+							messageId={message.id}
+							visible={$settings?.highContrastMode ?? false}
+						/>
 					{/if}
 
 					{#if $_user?.role === 'admin' || ($_user?.permissions?.chat?.delete_message ?? false)}
