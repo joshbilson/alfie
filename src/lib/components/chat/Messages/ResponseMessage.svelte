@@ -65,6 +65,7 @@
 	import FullHeightIframe from '$lib/components/common/FullHeightIframe.svelte';
 	import OutputEditView from './OutputEditView.svelte';
 	import ForkButton from './ForkButton.svelte'; // Alfie B2: "Fork from here"
+	import SaveToNoteButton from './SaveToNoteButton.svelte'; // Alfie B6: "Save to Note"
 
 	interface MessageType {
 		id: string;
@@ -1059,6 +1060,13 @@
 									<ForkButton
 										{chatId}
 										messageId={message.id}
+										visible={isLastMessage || ($settings?.highContrastMode ?? false)}
+									/>
+								{/if}
+
+								{#if !readOnly}
+									<SaveToNoteButton
+										content={message.content}
 										visible={isLastMessage || ($settings?.highContrastMode ?? false)}
 									/>
 								{/if}

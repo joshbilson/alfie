@@ -17,6 +17,7 @@
 	import Image from '$lib/components/common/Image.svelte';
 	import DeleteConfirmDialog from '$lib/components/common/ConfirmDialog.svelte';
 	import ForkButton from './ForkButton.svelte'; // Alfie B2: "Fork from here"
+	import SaveToNoteButton from './SaveToNoteButton.svelte'; // Alfie B6: "Save to Note"
 
 	import localizedFormat from 'dayjs/plugin/localizedFormat';
 
@@ -555,6 +556,13 @@
 						<ForkButton
 							{chatId}
 							messageId={message.id}
+							visible={$settings?.highContrastMode ?? false}
+						/>
+					{/if}
+
+					{#if !readOnly}
+						<SaveToNoteButton
+							content={message.content}
 							visible={$settings?.highContrastMode ?? false}
 						/>
 					{/if}
