@@ -2,7 +2,7 @@
 	import hljs from 'highlight.js';
 	import { toast } from 'svelte-sonner';
 	import { getContext, onMount, tick, onDestroy } from 'svelte';
-	import { config, pyodideWorker as pyodideWorkerStore } from '$lib/stores';
+	import { config, settings, pyodideWorker as pyodideWorkerStore } from '$lib/stores';
 
 	import PyodideWorker from '$lib/workers/pyodide.worker?worker';
 	import { executeCode } from '$lib/apis/utils';
@@ -19,6 +19,7 @@
 
 	import CodeEditor from '$lib/components/common/CodeEditor.svelte';
 	import SvgPanZoom from '$lib/components/common/SVGPanZoom.svelte';
+	import InlineArtifact from './Markdown/InlineArtifact.svelte';
 
 	import ChevronUp from '$lib/components/icons/ChevronUp.svelte';
 	import ChevronUpDown from '$lib/components/icons/ChevronUpDown.svelte';
@@ -581,6 +582,10 @@
 			</div>
 
 			{#if !collapsed}
+				{#if ($settings?.inlineArtifacts ?? true) && preview && (['html', 'svg'].includes(lang) || (lang === 'xml' && code.includes('<svg')))}
+					<InlineArtifact {lang} {code} onOpenPanel={onPreview} />
+				{/if}
+
 				<div
 					id="plt-canvas-{id}"
 					class="bg-gray-50 dark:bg-black dark:text-white max-w-full overflow-x-auto scrollbar-hidden"

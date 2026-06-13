@@ -248,6 +248,7 @@
 
 				if (
 					($settings?.detectArtifacts ?? true) &&
+					!($settings?.inlineArtifacts ?? true) &&
 					(['html', 'svg'].includes(lang) || (lang === 'xml' && code.includes('svg'))) &&
 					!$mobile &&
 					$chatId

@@ -1736,6 +1736,7 @@
 	"Removing {{count}} stale files..._other": "",
 	"Rename": "",
 	"Renamed to {{name}}": "",
+	"Render Artifacts Inline": "",
 	"Render Markdown in Assistant Messages": "",
 	"Render Markdown in Previews": "",
 	"Render Markdown in User Messages": "",

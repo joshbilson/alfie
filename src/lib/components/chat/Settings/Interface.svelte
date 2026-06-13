@@ -57,6 +57,7 @@
 	let highContrastMode = false;
 
 	let detectArtifacts = true;
+	let inlineArtifacts = true;
 	let displayMultiModelResponsesInTabs = false;
 
 	let richTextInput = true;
@@ -255,6 +256,7 @@
 		highContrastMode = $settings?.highContrastMode ?? false;
 
 		detectArtifacts = $settings?.detectArtifacts ?? true;
+		inlineArtifacts = $settings?.inlineArtifacts ?? true;
 		responseAutoCopy = $settings?.responseAutoCopy ?? false;
 
 		showUsername = $settings?.showUsername ?? false;
@@ -1360,6 +1362,25 @@
 							bind:state={detectArtifacts}
 							on:change={() => {
 								saveSettings({ detectArtifacts });
+							}}
+						/>
+					</div>
+				</div>
+			</div>
+
+			<div>
+				<div class=" py-0.5 flex w-full justify-between">
+					<div id="inline-artifacts-label" class=" self-center text-xs">
+						{$i18n.t('Render Artifacts Inline')}
+					</div>
+
+					<div class="flex items-center gap-2 p-1">
+						<Switch
+							ariaLabelledbyId="inline-artifacts-label"
+							tooltip={true}
+							bind:state={inlineArtifacts}
+							on:change={() => {
+								saveSettings({ inlineArtifacts });
 							}}
 						/>
 					</div>
