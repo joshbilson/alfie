@@ -16,6 +16,7 @@
 		archiveAllChats,
 		deleteAllChats,
 		getAllChats,
+		exportChatsAsMarkdownZip,
 		getChatList,
 		getPinnedChatList,
 		importChats
@@ -107,6 +108,15 @@
 			type: 'application/json'
 		});
 		saveAs(blob, `chat-export-${Date.now()}.json`);
+	};
+
+	const exportChatsAsMarkdown = async () => {
+		try {
+			const blob = await exportChatsAsMarkdownZip(localStorage.token);
+			saveAs(blob, `chat-export-${Date.now()}.zip`);
+		} catch (error) {
+			toast.error(`${error?.detail ?? error}`);
+		}
 	};
 
 	const archiveAllChatsHandler = async () => {
@@ -214,6 +224,21 @@
 							type="button"
 						>
 							<span class="self-center">{$i18n.t('Export')}</span>
+						</button>
+					</div>
+				</div>
+
+				<div>
+					<div class="py-0.5 flex w-full justify-between">
+						<div class="self-center text-xs">{$i18n.t('Export Chats as Markdown')}</div>
+						<button
+							class="p-1 px-3 text-xs flex rounded-sm transition"
+							on:click={() => {
+								exportChatsAsMarkdown();
+							}}
+							type="button"
+						>
+							<span class="self-center">{$i18n.t('Export (ZIP)')}</span>
 						</button>
 					</div>
 				</div>

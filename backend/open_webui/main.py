@@ -487,6 +487,7 @@ from open_webui.routers import (
     chats,
     configs,
     evaluations,
+    export_zip,
     files,
     folders,
     functions,
@@ -1459,6 +1460,7 @@ app.include_router(terminals.router, prefix='/api/v1/terminals', tags=['terminal
 app.include_router(automations.router, prefix='/api/v1/automations', tags=['automations'])
 app.include_router(calendar.router, prefix='/api/v1/calendars', tags=['calendars'])
 app.include_router(webpush.router, prefix='/api/v1/webpush', tags=['webpush'])
+app.include_router(export_zip.router, prefix='/api/v1/export', tags=['export'])
 
 # SCIM 2.0 API for identity management
 if ENABLE_SCIM:

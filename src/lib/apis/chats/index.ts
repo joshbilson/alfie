@@ -350,6 +350,26 @@ export const getAllChats = async (token: string) => {
 	return chats;
 };
 
+// Fetch the Markdown ZIP archive of the caller's own chats (council B22).
+// Returns a Blob so the caller can trigger a browser download (saveAs).
+export const exportChatsAsMarkdownZip = async (token: string) => {
+	const res = await fetch(`${WEBUI_API_BASE_URL}/export/zip`, {
+		method: 'GET',
+		headers: {
+			Accept: 'application/zip',
+			...(token && { authorization: `Bearer ${token}` })
+		}
+	});
+
+	if (!res.ok) {
+		const err = await res.json().catch(() => ({ detail: res.statusText }));
+		console.error(err);
+		throw err;
+	}
+
+	return await res.blob();
+};
+
 export const getChatListBySearchText = async (token: string, text: string, page: number = 1) => {
 	let error = null;
 
