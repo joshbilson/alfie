@@ -1,6 +1,6 @@
 {
 	"name": "open-webui",
-	"version": "0.9.11-alfie.1",
+	"version": "0.9.12-alfie.1",
 	"private": true,
 	"scripts": {
 		"dev": "npm run pyodide:fetch && vite dev --host",
