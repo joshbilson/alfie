@@ -1019,6 +1019,8 @@
 	"Force OCR": "",
 	"Force OCR on all pages of the PDF. This can lead to worse results if you have good text in your PDFs. Defaults to False.": "",
 	"Forge new paths": "",
+	"Fork from here": "",
+	"Forked into a new chat": "",
 	"Form": "",
 	"Format Lines": "",
 	"Format the lines in the output. Defaults to False. If set to True, the lines will be formatted to detect inline math and styles.": "",

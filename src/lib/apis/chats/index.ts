@@ -803,6 +803,50 @@ export const cloneChatById = async (token: string, id: string, title?: string) =
 	return res;
 };
 
+// Alfie B2: "Fork from here" — fork a chat from a message into a new chat owned
+// by the same user. mode: 'path' (default) | 'siblings' | 'full'.
+export const forkChatById = async (
+	token: string,
+	id: string,
+	messageId: string,
+	mode: 'path' | 'siblings' | 'full' = 'path',
+	title?: string
+) => {
+	let error = null;
+
+	const res = await fetch(`${WEBUI_API_BASE_URL}/chats/${id}/fork`, {
+		method: 'POST',
+		headers: {
+			Accept: 'application/json',
+			'Content-Type': 'application/json',
+			...(token && { authorization: `Bearer ${token}` })
+		},
+		body: JSON.stringify({
+			message_id: messageId,
+			mode,
+			...(title && { title: title })
+		})
+	})
+		.then(async (res) => {
+			if (!res.ok) throw await res.json();
+			return res.json();
+		})
+		.then((json) => {
+			return json;
+		})
+		.catch((err) => {
+			error = 'detail' in err ? err.detail : err;
+			console.error(err);
+			return null;
+		});
+
+	if (error) {
+		throw error;
+	}
+
+	return res;
+};
+
 export const cloneSharedChatById = async (token: string, id: string) => {
 	let error = null;
 
