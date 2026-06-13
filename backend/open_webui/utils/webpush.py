@@ -40,6 +40,24 @@ log = logging.getLogger(__name__)
 
 DEFAULT_VAPID_SUBJECT = 'mailto:notifications@alfie.local'
 
+# Delivery knobs (env-overridable). iOS/APNs DEFERS web pushes without an
+# explicit ``Urgency: high`` while the device is locked/idle — the notification
+# then only shows when the user next opens the PWA, which defeats the point of
+# agent push. ``high`` requests immediate delivery (these are user-visible,
+# user-requested notifications, the exact case the spec reserves ``high`` for).
+# TTL was 600s, which silently DROPS any push the device doesn't fetch within
+# 10 minutes (phone off / no signal); 24h keeps agent notifications waiting
+# instead.
+def _push_ttl() -> int:
+    try:
+        return int(os.environ.get('WEBPUSH_TTL', '86400'))
+    except ValueError:
+        return 86400
+
+
+def _push_urgency() -> str:
+    return os.environ.get('WEBPUSH_URGENCY') or 'high'
+
 
 def _vapid_private_key() -> Optional[str]:
     """Return the configured VAPID private key, normalizing PEM newlines.
@@ -104,7 +122,8 @@ def _send_one(subscription: dict, payload: str, vapid_private_key, vapid_claims:
             data=payload,
             vapid_private_key=vapid_private_key,
             vapid_claims=dict(vapid_claims),
-            ttl=600,
+            ttl=_push_ttl(),
+            headers={'Urgency': _push_urgency()},
             timeout=10,
         )
         return True, None
