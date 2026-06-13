@@ -1427,8 +1427,19 @@ class ChatTable:
             chats_result = await session.execute(chats_stmt)
             chat_by_id = {c.id: c for c in chats_result.scalars().all()}
 
+            # Order by the MATCHED MESSAGE's recency — the same key the bounded
+            # over-fetch (ChatMessage.created_at DESC) used — so the page slice
+            # below stays consistent with the fetch order. (Previously this
+            # re-sorted by chat.updated_at, a different key, which could drift a
+            # chat near the over-fetch boundary in/out across pages — the client
+            # dedupe hides dupes but cannot recover a dropped chat.)
+            ordered = sorted(
+                best_by_chat.items(),
+                key=lambda kv: (kv[1].created_at or 0),
+                reverse=True,
+            )
             results: list[ChatMessageSearchResult] = []
-            for chat_id, msg in best_by_chat.items():
+            for chat_id, msg in ordered:
                 chat = chat_by_id.get(chat_id)
                 if chat is None:
                     continue
@@ -1444,8 +1455,6 @@ class ChatTable:
                     )
                 )
 
-            # Order chats by recency and paginate at the chat level.
-            results.sort(key=lambda r: r.updated_at, reverse=True)
             return results[skip : skip + limit]
 
     async def get_chats_by_folder_id_and_user_id(
