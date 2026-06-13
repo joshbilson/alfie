@@ -34,6 +34,8 @@ how the existing ``/clone`` endpoint copies the blob verbatim.
 
 from __future__ import annotations
 
+import copy
+
 FORK_MODES = ('path', 'siblings', 'full')
 
 
@@ -122,9 +124,12 @@ def build_forked_history(history: dict, message_id: str, mode: str = 'path') -> 
         src = messages.get(mid)
         if not isinstance(src, dict):
             continue
-        # Shallow copy + prune link arrays to the kept set so the tree stays
-        # internally consistent (no dangling parent/child references).
-        copied = dict(src)
+        # Deep copy + prune link arrays to the kept set so the tree stays
+        # internally consistent (no dangling parent/child references) AND the
+        # fork shares NO nested references with the source — editing the fork's
+        # content/meta can never mutate the original chat (makes the docstring's
+        # immutability guarantee real, not just latent-safe).
+        copied = copy.deepcopy(src)
         parent_id = copied.get('parentId')
         copied['parentId'] = parent_id if parent_id in keep else None
         copied['childrenIds'] = [cid for cid in (copied.get('childrenIds') or []) if cid in keep]
