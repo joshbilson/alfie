@@ -34,6 +34,12 @@ log = logging.getLogger(__name__)
 
 router = APIRouter()
 
+# Cap the total UNCOMPRESSED markdown built in memory so a pathological history
+# can't spike the open-webui container on the shared box (the ZIP is assembled in
+# RAM). Generous for a family stack (kilobyte–low-MB chats); past it we stop and
+# note the truncation in index.md rather than OOM. Override via env if ever needed.
+_MAX_TOTAL_BYTES = 50 * 1024 * 1024
+
 
 # Filenames are reserved on Windows and must not collide with index.md or use
 # path separators. We keep this conservative so the archive is portable.
@@ -122,6 +128,8 @@ async def export_chats_as_markdown_zip(user=Depends(get_verified_user)):
     index_lines.append('')
 
     used_names: set[str] = set()
+    total_bytes = 0
+    truncated = 0
 
     with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
         for chat in chats:
@@ -148,12 +156,25 @@ async def export_chats_as_markdown_zip(user=Depends(get_verified_user)):
 
             filename = f'{candidate}.md'
             markdown = _render_chat_markdown(chat.title, messages, chat.updated_at)
+            mbytes = len(markdown.encode('utf-8'))
+            # Stop before exceeding the in-memory cap; record how many were skipped.
+            if total_bytes + mbytes > _MAX_TOTAL_BYTES and total_bytes > 0:
+                truncated = len(chats) - len(used_names)
+                break
+            total_bytes += mbytes
             zf.writestr(filename, markdown)
 
             # TOC entry: link the file (URL-encode spaces) + show the raw title.
             link_target = filename.replace(' ', '%20')
             index_lines.append(f'- [{chat.title or "Untitled chat"}]({link_target})')
 
+        if truncated > 0:
+            index_lines.append('')
+            index_lines.append(
+                f'> _Note: {truncated} more conversation(s) omitted — export hit the '
+                f'{_MAX_TOTAL_BYTES // (1024 * 1024)} MB size cap. Export in smaller '
+                f'batches or use the JSON export for a complete archive._'
+            )
         index_lines.append('')
         zf.writestr('index.md', '\n'.join(index_lines))
 
