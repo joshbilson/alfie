@@ -388,6 +388,46 @@ export const getChatListBySearchText = async (token: string, text: string, page:
 	}));
 };
 
+// Alfie: on-box full-text search over the current user's own message contents.
+// Returns chats with a matched-content snippet; always scoped server-side to user.id.
+export const getChatListByMessageSearch = async (token: string, text: string, page: number = 1) => {
+	let error = null;
+
+	const searchParams = new URLSearchParams();
+	searchParams.append('text', text);
+	searchParams.append('page', `${page}`);
+
+	const res = await fetch(`${WEBUI_API_BASE_URL}/chats/search/messages?${searchParams.toString()}`, {
+		method: 'GET',
+		headers: {
+			Accept: 'application/json',
+			'Content-Type': 'application/json',
+			...(token && { authorization: `Bearer ${token}` })
+		}
+	})
+		.then(async (res) => {
+			if (!res.ok) throw await res.json();
+			return res.json();
+		})
+		.then((json) => {
+			return json;
+		})
+		.catch((err) => {
+			error = err;
+			console.error(err);
+			return null;
+		});
+
+	if (error) {
+		throw error;
+	}
+
+	return res.map((chat) => ({
+		...chat,
+		time_range: getTimeRange(chat.updated_at)
+	}));
+};
+
 export const getChatsByFolderId = async (token: string, folderId: string) => {
 	let error = null;
 

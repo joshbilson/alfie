@@ -18,6 +18,7 @@ from open_webui.models.chats import (
     ChatForm,
     ChatHistoryStats,
     ChatImportForm,
+    ChatMessageSearchResult,
     ChatResponse,
     Chats,
     ChatsImportForm,
@@ -627,6 +628,32 @@ async def search_user_chats(
                 await Tags.delete_tag_by_name_and_user_id(tag_id, user.id, db=db)
 
     return chat_list
+
+
+############################
+# SearchMessages (Alfie: on-box full-text message-content search w/ snippets)
+############################
+
+
+@router.get('/search/messages', response_model=list[ChatMessageSearchResult])
+async def search_user_chat_messages(
+    text: str,
+    page: int | None = None,
+    user=Depends(get_verified_user),
+    db: AsyncSession = Depends(get_async_session),
+):
+    """Full-text search over the authenticated user's own message contents.
+
+    Strictly user-scoped via Chats.search_messages_by_user_id(user.id, ...) ->
+    ChatMessage.user_id == user.id (A2: no cross-user results possible).
+    """
+    if page is None:
+        page = 1
+
+    limit = 60
+    skip = (page - 1) * limit
+
+    return await Chats.search_messages_by_user_id(user.id, text, skip=skip, limit=limit, db=db)
 
 
 ############################

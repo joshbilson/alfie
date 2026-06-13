@@ -26,6 +26,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     and_,
+    cast,
     delete,
     func,
     or_,
@@ -38,6 +39,40 @@ from sqlalchemy.sql import exists
 from sqlalchemy.sql.expression import bindparam
 
 log = logging.getLogger(__name__)
+
+
+def _message_content_to_text(content) -> str:
+    """Flatten a chat_message ``content`` value (str or list-of-blocks) to plain
+    searchable text. Mirrors utils.misc.get_content_from_message but concatenates
+    every text block so multi-part messages are fully searchable."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, dict) and item.get('type') == 'text':
+                parts.append(item.get('text') or '')
+        return '\n'.join(parts)
+    return ''
+
+
+def _build_snippet(text_value: str, needle: str, radius: int = 80) -> str:
+    """Return a single-line excerpt of ``text_value`` centered on the first
+    case-insensitive occurrence of ``needle``, with ellipses where trimmed."""
+    flat = ' '.join((text_value or '').split())
+    if not needle:
+        return flat[: radius * 2] + ('…' if len(flat) > radius * 2 else '')
+    idx = flat.lower().find(needle.lower())
+    if idx == -1:
+        return flat[: radius * 2] + ('…' if len(flat) > radius * 2 else '')
+    start = max(0, idx - radius)
+    end = min(len(flat), idx + len(needle) + radius)
+    snippet = flat[start:end]
+    if start > 0:
+        snippet = '…' + snippet
+    if end < len(flat):
+        snippet = snippet + '…'
+    return snippet
 
 
 class Chat(Base):  # database table mapping for chat entity
@@ -179,6 +214,18 @@ class ChatTitleIdResponse(BaseModel):
     updated_at: int
     created_at: int
     last_read_at: int | None = None
+
+
+class ChatMessageSearchResult(BaseModel):
+    """A chat that has a message matching a full-text search, with a snippet
+    of the best-matching message content (Alfie: on-box message-content search)."""
+
+    id: str  # chat id
+    title: str
+    updated_at: int
+    created_at: int
+    snippet: str  # excerpt of the matched message content, with the match centered
+    role: str  # role of the matched message (user / assistant / system)
 
 
 class SharedChatResponse(BaseModel):
@@ -1315,6 +1362,100 @@ class ChatTable:
 
             # Validate and return chats
             return [ChatModel.model_validate(chat) for chat in all_chats]
+
+    async def search_messages_by_user_id(
+        self,
+        user_id: str,
+        search_text: str,
+        include_archived: bool = False,
+        skip: int = 0,
+        limit: int = 60,
+        db: AsyncSession | None = None,
+    ) -> list['ChatMessageSearchResult']:
+        """On-box full-text search over the CALLING USER's own message contents.
+
+        Backed by the normalized ``chat_message`` table (indexed on user_id),
+        so it is a content scan rather than the title/JSON-blob scan in
+        get_chats_by_user_id_and_search_text. Returns one result per matching
+        chat (most recent message wins) with a snippet of the matched content.
+
+        A2 / isolation: every row is filtered by ``ChatMessage.user_id == user_id``,
+        so no other user's messages can ever be returned.
+        """
+        search_text = sanitize_text_for_db(search_text).strip()
+        if not search_text:
+            return []
+
+        like = f'%{search_text}%'
+
+        async with get_async_db_context(db) as session:
+            # DB-side coarse filter: user-scoped + content text contains the term.
+            # cast(content -> Text) covers both string and list-of-blocks shapes;
+            # Python below re-verifies against readable text and builds the snippet.
+            stmt = (
+                select(ChatMessage)
+                .filter(ChatMessage.user_id == user_id)
+                .filter(cast(ChatMessage.content, Text).ilike(like))
+                .order_by(ChatMessage.created_at.desc())
+                # over-fetch: several messages can belong to one chat; we dedupe
+                # to one row per chat below, then page over chats.
+                .limit((skip + limit) * 8 + 200)
+            )
+            result = await session.execute(stmt)
+            messages = result.scalars().all()
+
+            needle = search_text.lower()
+            # Keep the most recent matching message per chat.
+            best_by_chat: dict[str, ChatMessage] = {}
+            for msg in messages:
+                text_value = _message_content_to_text(msg.content)
+                if needle not in text_value.lower():
+                    # Structural-only JSON match (e.g. key/punctuation); skip.
+                    continue
+                if msg.chat_id not in best_by_chat:
+                    best_by_chat[msg.chat_id] = msg
+
+            chat_ids = list(best_by_chat.keys())
+            if not chat_ids:
+                return []
+
+            # Resolve chat metadata (title, timestamps, archived) — re-scoped to
+            # the same user_id as a defense-in-depth check.
+            chats_stmt = select(Chat).filter(Chat.user_id == user_id, Chat.id.in_(chat_ids))
+            if not include_archived:
+                chats_stmt = chats_stmt.filter(Chat.archived == False)
+            chats_result = await session.execute(chats_stmt)
+            chat_by_id = {c.id: c for c in chats_result.scalars().all()}
+
+            # Order by the MATCHED MESSAGE's recency — the same key the bounded
+            # over-fetch (ChatMessage.created_at DESC) used — so the page slice
+            # below stays consistent with the fetch order. (Previously this
+            # re-sorted by chat.updated_at, a different key, which could drift a
+            # chat near the over-fetch boundary in/out across pages — the client
+            # dedupe hides dupes but cannot recover a dropped chat.)
+            ordered = sorted(
+                best_by_chat.items(),
+                key=lambda kv: (kv[1].created_at or 0),
+                reverse=True,
+            )
+            results: list[ChatMessageSearchResult] = []
+            for chat_id, msg in ordered:
+                chat = chat_by_id.get(chat_id)
+                if chat is None:
+                    continue
+                text_value = _message_content_to_text(msg.content)
+                results.append(
+                    ChatMessageSearchResult(
+                        id=chat.id,
+                        title=chat.title,
+                        updated_at=chat.updated_at,
+                        created_at=chat.created_at,
+                        snippet=_build_snippet(text_value, search_text),
+                        role=msg.role,
+                    )
+                )
+
+            return results[skip : skip + limit]
 
     async def get_chats_by_folder_id_and_user_id(
         self,

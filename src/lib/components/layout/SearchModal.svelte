@@ -5,7 +5,12 @@
 
 	import Modal from '$lib/components/common/Modal.svelte';
 	import SearchInput from './Sidebar/SearchInput.svelte';
-	import { getChatById, getChatList, getChatListBySearchText } from '$lib/apis/chats';
+	import {
+		getChatById,
+		getChatList,
+		getChatListBySearchText,
+		getChatListByMessageSearch
+	} from '$lib/apis/chats';
 	import Spinner from '../common/Spinner.svelte';
 
 	import dayjs from '$lib/dayjs';
@@ -110,6 +115,30 @@
 		}
 	};
 
+	// Alfie: merge full-text message-content matches (with snippets) into a
+	// title/content result list. Adds a `snippet` to existing rows and unions in
+	// any chats whose match is purely in message content. Both sources are
+	// server-side scoped to the authenticated user.
+	const mergeMessageMatches = async (baseList, p) => {
+		const messageMatches =
+			(await getChatListByMessageSearch(localStorage.token, query, p).catch(() => null)) ?? [];
+
+		const snippetById = new Map(messageMatches.map((m) => [m.id, m]));
+		const merged = (baseList ?? []).map((c) =>
+			snippetById.has(c.id) ? { ...c, snippet: snippetById.get(c.id).snippet } : c
+		);
+
+		const existingIds = new Set(merged.map((c) => c.id));
+		for (const m of messageMatches) {
+			if (!existingIds.has(m.id)) {
+				merged.push({ ...m });
+			}
+		}
+
+		merged.sort((a, b) => (b.updated_at ?? 0) - (a.updated_at ?? 0));
+		return merged;
+	};
+
 	const searchHandler = async () => {
 		if (!show) {
 			return;
@@ -125,7 +154,8 @@
 			chatList = await getChatList(localStorage.token, page);
 		} else {
 			searchDebounceTimeout = setTimeout(async () => {
-				chatList = await getChatListBySearchText(localStorage.token, query, page);
+				const titleMatches = await getChatListBySearchText(localStorage.token, query, page);
+				chatList = await mergeMessageMatches(titleMatches, page);
 
 				if ((chatList ?? []).length === 0) {
 					allChatsLoaded = true;
@@ -154,7 +184,8 @@
 		let newChatList = [];
 
 		if (query) {
-			newChatList = await getChatListBySearchText(localStorage.token, query, page);
+			const titleMatches = await getChatListBySearchText(localStorage.token, query, page);
+			newChatList = await mergeMessageMatches(titleMatches, page);
 		} else {
 			newChatList = await getChatList(localStorage.token, page);
 		}
@@ -384,10 +415,17 @@
 								onClose();
 							}}
 						>
-							<div class=" flex-1">
+							<div class=" flex-1 min-w-0">
 								<div class="text-ellipsis line-clamp-1 w-full">
 									{chat?.title}
 								</div>
+								{#if chat?.snippet}
+									<div
+										class="text-ellipsis line-clamp-1 w-full text-xs text-gray-500 dark:text-gray-400 mt-0.5"
+									>
+										{chat.snippet}
+									</div>
+								{/if}
 							</div>
 
 							<div class=" pl-3 shrink-0 text-gray-500 dark:text-gray-400 text-xs">
