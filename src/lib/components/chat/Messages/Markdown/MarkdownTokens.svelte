@@ -163,6 +163,7 @@
 				{attributes}
 				{save}
 				{preview}
+				{done}
 				edit={editCodeBlock}
 				stickyButtonsClassName={topPadding ? 'top-10' : 'top-0'}
 				onSave={(value) => {
