@@ -40,6 +40,11 @@
 	export let run = true;
 	export let preview = false;
 	export let collapsed = false;
+	// Streaming guard: defaults true so non-streaming callers render immediately;
+	// the streaming path (MarkdownTokens) threads done=false until the fenced
+	// block closes, so the inline artifact iframe materializes ONCE (no per-token
+	// srcdoc reload / repeated <script> execution).
+	export let done = true;
 
 	export let token;
 	export let lang = '';
@@ -582,7 +587,7 @@
 			</div>
 
 			{#if !collapsed}
-				{#if ($settings?.inlineArtifacts ?? true) && preview && (['html', 'svg'].includes(lang) || (lang === 'xml' && code.includes('<svg')))}
+				{#if ($settings?.detectArtifacts ?? true) && ($settings?.inlineArtifacts ?? true) && done && preview && (['html', 'svg'].includes(lang) || (lang === 'xml' && code.includes('<svg')))}
 					<InlineArtifact {lang} {code} onOpenPanel={onPreview} />
 				{/if}
 
