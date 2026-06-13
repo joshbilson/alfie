@@ -1099,9 +1099,35 @@
 						await goto(`/auth?redirect=${encodedUrl}`);
 					}
 				} else {
-					// Don't redirect if we're already on the auth page
-					// Needed because we pass in tokens from OAuth logins via URL fragments
-					if ($page.url.pathname !== '/auth') {
+					// No token in localStorage. On iOS an installed PWA's
+					// script-writable storage (localStorage) is evicted aggressively
+					// by WebKit (ITP), but the httponly session cookie persists for
+					// its full lifetime. Try to recover the session from that cookie
+					// before bouncing to the login page — getSessionUser() with no
+					// token sends only credentials:'include', and the backend reads
+					// the cookie and returns the token so we can repopulate
+					// localStorage. This is what stops the "logged out every time I
+					// open the app / after every update" loop on the phone.
+					const sessionUser = await getSessionUser().catch(() => null);
+					if (sessionUser?.token) {
+						localStorage.token = sessionUser.token;
+						await user.set(sessionUser);
+						try {
+							await config.set(await getBackendConfig());
+						} catch (error) {
+							console.error('Error refreshing backend config:', error);
+						}
+
+						const timezone = getUserTimezone();
+						if (timezone) {
+							updateUserTimezone(localStorage.token, timezone);
+						}
+
+						resubscribeWebPush(localStorage.token);
+					} else if ($page.url.pathname !== '/auth') {
+						// Cookie missing or expired too — a genuine logout.
+						// Don't redirect if we're already on the auth page (OAuth
+						// logins pass tokens via URL fragments).
 						await goto(`/auth?redirect=${encodedUrl}`);
 					}
 				}

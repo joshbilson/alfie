@@ -82,14 +82,20 @@ export const updateAdminConfig = async (token: string, body: object) => {
 	return res;
 };
 
-export const getSessionUser = async (token: string) => {
+export const getSessionUser = async (token?: string) => {
 	let error = null;
 
 	const res = await fetch(`${WEBUI_API_BASE_URL}/auths/`, {
 		method: 'GET',
 		headers: {
 			'Content-Type': 'application/json',
-			Authorization: `Bearer ${token}`
+			// Only send the bearer header when we actually have a token. Calling
+			// with no token relies on the httponly session cookie (credentials:
+			// 'include' below); the backend's bearer_security is auto_error=False
+			// and falls back to request.cookies['token'], so a cookie-only call
+			// authenticates. Sending `Bearer undefined` would instead be parsed as
+			// a bogus credential and 401, defeating the cookie fallback.
+			...(token ? { Authorization: `Bearer ${token}` } : {})
 		},
 		credentials: 'include'
 	})
